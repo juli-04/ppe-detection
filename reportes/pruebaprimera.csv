@@ -1,0 +1,7 @@
+fecha_hora,frame,estado,personas,cascos,chalecos
+2026-09-08 23:08:44,34,INCUMPLE (sin casco ni chaleco),1,0,0
+2026-09-08 23:08:45,43,INCUMPLE (sin casco ni chaleco),1,0,0
+2026-09-08 23:08:48,81,FALTA CASCO,3,0,1
+2026-09-08 23:08:55,193,INCUMPLE (sin casco ni chaleco),1,0,0
+2026-09-08 23:09:00,251,INCUMPLE (sin casco ni chaleco),1,0,0
+2026-09-08 23:09:02,259,FALTA CASCO,1,0,1

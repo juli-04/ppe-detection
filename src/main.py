@@ -1,6 +1,9 @@
 import sys
 import cv2
 import winsound
+import csv
+import os
+from datetime import datetime
 from winotify import Notification
 from ultralytics import YOLO
 
@@ -27,8 +30,20 @@ if not video.isOpened():
     print("Error: no se pudo abrir la fuente de video. Revisá la ruta o el número de cámara.")
     exit()
 
+# --- Preparar el archivo CSV de reporte ---
+os.makedirs('reportes', exist_ok=True)
+ruta_csv = 'reportes/detecciones.csv'
+
+# Si el archivo no existe, lo creamos con encabezados
+if not os.path.exists(ruta_csv):
+    with open(ruta_csv, 'w', newline='', encoding='utf-8') as f:
+        f.write('sep=,\n')
+        writer = csv.writer(f)
+        writer.writerow(['fecha_hora', 'frame', 'estado', 'personas', 'cascos', 'chalecos'])
+
 # Variable para saber si YA estábamos en incumplimiento (evita notificar en cada frame)
 incumplimiento_previo = False
+numero_frame = 0
 
 def notificar_incumplimiento(mensaje):
     """Dispara sonido + notificación de escritorio de Windows."""
@@ -41,12 +56,25 @@ def notificar_incumplimiento(mensaje):
     )
     toast.show()
 
+def registrar_en_csv(frame_num, estado, conteo):
+    with open(ruta_csv, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            frame_num,
+            estado,
+            conteo['person'],
+            conteo['helmet'],
+            conteo['vest']
+        ])
+
 # 3. Procesar frame por frame
 while video.isOpened():
     ret, frame = video.read()
     if not ret:
         break
 
+    numero_frame += 1 
     resultados = modelo(frame)
     frame_anotado = resultados[0].plot()
 
@@ -79,9 +107,10 @@ while video.isOpened():
         estado = "Sin personas detectadas"
         color = (255, 255, 255)
 
-    # --- Disparar notificación solo cuando CAMBIA a incumplimiento (no en cada frame) ---
+   # Notificar y registrar SOLO cuando empieza un nuevo incumplimiento
     if hay_incumplimiento and not incumplimiento_previo:
         notificar_incumplimiento(estado)
+        registrar_en_csv(numero_frame, estado, conteo)
     incumplimiento_previo = hay_incumplimiento
 
     cv2.putText(frame_anotado, estado, (20, 60),
@@ -95,3 +124,4 @@ while video.isOpened():
 
 video.release()
 cv2.destroyAllWindows()
+print(f"\nReporte guardado en: {ruta_csv}")
