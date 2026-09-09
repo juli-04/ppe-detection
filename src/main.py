@@ -75,7 +75,7 @@ while video.isOpened():
         break
 
     numero_frame += 1 
-    resultados = modelo(frame)
+    resultados = modelo(frame, verbose=False, conf=0.7) # Ajusta el umbral de confianza según tus necesidades
     frame_anotado = resultados[0].plot()
 
     # --- Lógica de conteo ---
