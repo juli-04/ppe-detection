@@ -1,5 +1,7 @@
 import sys
 import cv2
+import winsound
+from winotify import Notification
 from ultralytics import YOLO
 
 # 1. Cargar el modelo entrenado por nosotros
@@ -25,6 +27,20 @@ if not video.isOpened():
     print("Error: no se pudo abrir la fuente de video. Revisá la ruta o el número de cámara.")
     exit()
 
+# Variable para saber si YA estábamos en incumplimiento (evita notificar en cada frame)
+incumplimiento_previo = False
+
+def notificar_incumplimiento(mensaje):
+    """Dispara sonido + notificación de escritorio de Windows."""
+    winsound.Beep(1000, 300)  # frecuencia 1000Hz, dura 300ms
+    toast = Notification(
+        app_id="SkyGuard EPP",
+        title="⚠️ Incumplimiento de seguridad",
+        msg=mensaje,
+        duration="short"
+    )
+    toast.show()
+
 # 3. Procesar frame por frame
 while video.isOpened():
     ret, frame = video.read()
@@ -42,22 +58,31 @@ while video.isOpened():
         conteo[nombre_clase] += 1
 
     # --- Lógica de cumplimiento ---
+    hay_incumplimiento = False
     if conteo["person"] > 0:
         if conteo["helmet"] > 0 and conteo["vest"] > 0:
             estado = "CUMPLE (casco + chaleco)"
-            color = (0, 255, 0)  # verde
+            color = (0, 255, 0)
         elif conteo["helmet"] > 0:
             estado = "FALTA CHALECO"
-            color = (0, 165, 255)  # naranja
+            color = (0, 165, 255)
+            hay_incumplimiento = True
         elif conteo["vest"] > 0:
             estado = "FALTA CASCO"
             color = (0, 165, 255)
+            hay_incumplimiento = True
         else:
             estado = "INCUMPLE (sin casco ni chaleco)"
-            color = (0, 0, 255)  # rojo
+            color = (0, 0, 255)
+            hay_incumplimiento = True
     else:
         estado = "Sin personas detectadas"
         color = (255, 255, 255)
+
+    # --- Disparar notificación solo cuando CAMBIA a incumplimiento (no en cada frame) ---
+    if hay_incumplimiento and not incumplimiento_previo:
+        notificar_incumplimiento(estado)
+    incumplimiento_previo = hay_incumplimiento
 
     cv2.putText(frame_anotado, estado, (20, 60),
                 cv2.FONT_HERSHEY_SIMPLEX, 1.5, color, 3)
