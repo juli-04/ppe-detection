@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SkyGuard - Monitor de EPP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: {
+    fontFamily: { sans: ['Barlow', 'system-ui', 'sans-serif'], cond: ['"Barlow Condensed"', 'Barlow', 'sans-serif'] },
+    colors: { acero: '#1b2025', chapa: '#262d34', borde: '#3a444d', seguridad: '#f5c400' }
+  } } };
+</script>
+<style>
+  .franja { background: repeating-linear-gradient(-45deg, #f5c400 0 14px, #1b2025 14px 28px); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn:focus-visible { outline: 3px solid #f5c400; outline-offset: 2px; }
+</style>
+</head>
+<body class="bg-acero text-slate-200 font-sans min-h-screen">
+
+<div class="franja h-2"></div>
+
+<header class="border-b border-borde bg-chapa">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+    <div>
+      <h1 class="font-cond text-3xl font-bold tracking-wide text-white leading-none">SkyGuard</h1>
+      <p class="text-sm text-slate-400">Verificación de casco y chaleco en tiempo real</p>
+    </div>
+    <div id="badge" class="flex items-center gap-2 border border-borde bg-acero px-3 py-1.5 text-sm font-medium">
+      <span id="badgeDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+      <span id="badgeTxt">Detenido</span>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6 grid gap-6 lg:grid-cols-[1fr_320px]">
+
+  <!-- Video -->
+  <section>
+    <div class="relative bg-black border-2 border-borde aspect-video">
+      <img id="feed" alt="Video procesado con detecciones" class="w-full h-full object-contain">
+      <div id="sinServidor" class="hidden absolute inset-0 flex items-center justify-center bg-black/85 text-center p-6">
+        <p class="text-lg">No hay conexión con el servidor.<br>
+          <span class="text-slate-400 text-base">Verifica que uvicorn esté corriendo. Reintentando...</span></p>
+      </div>
+    </div>
+    <div class="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+      <span class="flex items-center gap-2"><i class="w-3.5 h-3.5 inline-block" style="background:#0080ff"></i>Persona</span>
+      <span class="flex items-center gap-2"><i class="w-3.5 h-3.5 inline-block" style="background:#00c800"></i>Casco</span>
+      <span class="flex items-center gap-2"><i class="w-3.5 h-3.5 inline-block" style="background:#ffa500"></i>Chaleco</span>
+    </div>
+  </section>
+
+  <!-- Panel de control -->
+  <aside class="bg-chapa border border-borde p-4 flex flex-col gap-3 self-start">
+    <h2 class="font-cond text-xl font-semibold text-white">Fuente de video</h2>
+
+    <label for="selCamara" class="text-sm text-slate-300">Cámara (Iriun suele ser 1 o 2)</label>
+    <div class="flex gap-2">
+      <select id="selCamara" class="flex-1 bg-acero border border-borde px-2 py-2 text-white">
+        <option value="0">Cámara 0</option><option value="1">Cámara 1</option><option value="2">Cámara 2</option>
+      </select>
+      <button id="btnBuscar" class="btn border border-borde bg-acero px-3 hover:bg-borde">Buscar</button>
+    </div>
+
+    <button id="btnCamara" class="btn bg-seguridad text-black font-semibold py-3 px-4 text-left hover:brightness-110">
+      Iniciar cámara web
+    </button>
+
+    <button id="btnVideo" class="btn border border-borde bg-acero text-white font-semibold py-3 px-4 text-left hover:bg-borde">
+      Cargar video grabado (MP4)
+    </button>
+    <input id="inputVideo" type="file" accept="video/mp4,.mp4" class="hidden">
+
+    <button id="btnDetener" class="btn border border-red-500 text-red-400 font-semibold py-3 px-4 text-left hover:bg-red-500/10">
+      Detener
+    </button>
+
+    <div class="border-t border-borde pt-3 mt-1">
+      <h3 class="text-sm font-semibold text-slate-300 mb-1">Registro</h3>
+      <ul id="log" class="text-sm text-slate-400 space-y-1 max-h-40 overflow-y-auto"></ul>
+    </div>
+
+    <a href="http://localhost:3000" target="_blank" rel="noopener"
+       class="text-sm text-seguridad underline underline-offset-2 hover:brightness-110">Abrir estadísticas en Grafana</a>
+  </aside>
+</main>
+
+<script>
+  // Vacío = mismo origen (FastAPI sirve este HTML). Si abres el HTML desde otro origen, usa "http://localhost:8000"
+  // y habilita CORSMiddleware en FastAPI.
+  const API = "";
+  const $ = (id) => document.getElementById(id);
+  const feed = $("feed");
+  const botones = [$("btnCamara"), $("btnVideo"), $("btnDetener"), $("btnBuscar")];
+
+  const ESTADOS = {
+    detenido:   { txt: "Detenido",        dot: "bg-slate-500" },
+    iniciando:  { txt: "Iniciando",       dot: "bg-seguridad" },
+    cargando:   { txt: "Cargando modelo", dot: "bg-seguridad animate-pulse" },
+    ejecutando: { txt: "Procesando",      dot: "bg-green-500 animate-pulse" },
+    finalizado: { txt: "Video finalizado", dot: "bg-seguridad" },
+    error:      { txt: "Error",           dot: "bg-red-500" },
+  };
+
+  function log(msg) {
+    const li = document.createElement("li");
+    li.textContent = new Date().toLocaleTimeString() + "  " + msg;
+    $("log").prepend(li);
+  }
+
+  function conectarStream() {
+    feed.src = `${API}/video_feed?t=${Date.now()}`;   // el parámetro evita que el navegador reuse la conexión
+  }
+  feed.addEventListener("load", () => $("sinServidor").classList.add("hidden"));
+  feed.addEventListener("error", () => {
+    $("sinServidor").classList.remove("hidden");
+    setTimeout(conectarStream, 3000);
+  });
+
+  async function llamar(ruta, opciones = {}) {
+    const r = await fetch(API + ruta, opciones);
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || `Error HTTP ${r.status}`);
+    }
+    return r.json();
+  }
+
+  async function ejecutar(accion, mensajeOk) {
+    botones.forEach((b) => (b.disabled = true));
+    try {
+      await accion();
+      log(mensajeOk);
+    } catch (e) {
+      log("Error: " + e.message);
+    } finally {
+      botones.forEach((b) => (b.disabled = false));
+      refrescarEstado();
+    }
+  }
+
+  async function refrescarEstado() {
+    try {
+      const { estado, activo, fuente, error } = await llamar("/motor");
+      const e = ESTADOS[estado] || ESTADOS.detenido;
+      let txt = e.txt;
+      if (activo && fuente) txt += /^\d+$/.test(fuente) ? ` (cámara ${fuente})` : ` (${fuente.split(/[\\/]/).pop()})`;
+      if (estado === "error" && error) txt += `: ${error}`;
+      $("badgeTxt").textContent = txt;
+      $("badgeDot").className = "w-2.5 h-2.5 rounded-full " + e.dot;
+      $("btnDetener").disabled = !activo;
+    } catch { /* el overlay de conexión ya avisa */ }
+  }
+
+  $("btnCamara").addEventListener("click", () => {
+    const i = $("selCamara").value;
+    ejecutar(() => llamar(`/fuente/camara?indice=${i}`, { method: "POST" }), `Cámara ${i} iniciada`);
+  });
+
+  $("btnBuscar").addEventListener("click", () =>
+    ejecutar(async () => {
+      const { camaras } = await llamar("/camaras");
+      if (!camaras.length) throw new Error("No se encontró ninguna cámara. Abre Iriun en el celular y en la PC.");
+      $("selCamara").innerHTML = camaras
+        .map((c) => `<option value="${c.indice}">Cámara ${c.indice} (${c.resolucion})</option>`).join("");
+    }, "Búsqueda de cámaras terminada"));
+
+  $("btnDetener").addEventListener("click", () =>
+    ejecutar(() => llamar("/detener", { method: "POST" }), "Transmisión detenida"));
+
+  $("btnVideo").addEventListener("click", () => $("inputVideo").click());
+  $("inputVideo").addEventListener("change", (ev) => {
+    const archivo = ev.target.files[0];
+    if (!archivo) return;
+    const datos = new FormData();
+    datos.append("archivo", archivo);
+    log(`Subiendo ${archivo.name}...`);
+    ejecutar(() => llamar("/fuente/video", { method: "POST", body: datos }), `Reproduciendo ${archivo.name}`)
+      .finally(() => (ev.target.value = ""));   // permite volver a elegir el mismo archivo
+  });
+
+  conectarStream();
+  refrescarEstado();
+  setInterval(refrescarEstado, 2000);
+</script>
+</body>
+</html>
