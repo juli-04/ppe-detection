@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Entorno virtual y caché
+venv/
+__pycache__/
+
+# Archivos pesados de Machine Learning
+dataset_epp/
+runs/
+*.pt
+
+# Multimedia y Base de datos
+videos_og/
+videos_subidos/
+*.mp4
+seguridad.db

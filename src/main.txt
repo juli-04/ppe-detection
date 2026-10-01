@@ -145,7 +145,7 @@ while video.isOpened():
     cajas = resultados[0].boxes
     ids = cajas.id  # None si todavía no hay tracks confirmados en este frame (o no hay detecciones)
 
-    # --- Conteo SOLO dentro de la zona de riesgo ---
+    # Conteo SOLO dentro de la zona de riesgo
     conteo = {"head": 0, "helmet": 0, "person": 0, "vest": 0}
 
     if ids is not None:
@@ -169,7 +169,7 @@ while video.isOpened():
                 conteo[nombre_clase] += 1
             # id_seguimiento queda disponible para la Fase 2 (historial/suavizado por ID)
 
-    # --- Lógica de cumplimiento (misma que antes, ahora solo sobre lo que está en zona) ---
+    # Lógica de cumplimiento (misma que antes, ahora solo sobre lo que está en zona) 
     hay_incumplimiento = False
     if conteo["person"] > 0:
         if conteo["helmet"] > 0 and conteo["vest"] > 0:

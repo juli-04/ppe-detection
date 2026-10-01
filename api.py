@@ -37,9 +37,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from ultralytics import YOLO
 
-# ---------------------------------------------------------------------------
 # CONFIGURACIÓN (se puede sobrescribir con variables de entorno)
-# ---------------------------------------------------------------------------
+
 DB_PATH = os.getenv("SKYGUARD_DB", "seguridad.db")
 MODELO_PATH = os.getenv("SKYGUARD_MODELO", "modelos/best.pt")
 FUENTE_POR_DEFECTO = os.getenv("SKYGUARD_FUENTE", "videos_og/prueba.mp4")
@@ -53,7 +52,7 @@ FRAMES_ESTABLES = int(os.getenv("SKYGUARD_FRAMES_ESTABLES", "5"))  # anti-parpad
 
 CLASES_CONTADAS = ("person", "helmet", "vest")
 
-# --- Streaming ---
+# Streaming 
 VIDEOS_DIR = Path("videos_subidos")
 VIDEOS_DIR.mkdir(exist_ok=True)
 JPEG_QUALITY = 80   # 60-90: menor = menos ancho de banda
@@ -67,9 +66,9 @@ CLASES_DIBUJO = {
     "vest":   ("Chaleco", (0, 165, 255)),   # naranja
 }
 
-# ---------------------------------------------------------------------------
+
 # BASE DE DATOS (SQLite)
-# ---------------------------------------------------------------------------
+
 def conectar() -> sqlite3.Connection:
     """Abre una conexión nueva. SQLite no debe compartir conexiones entre hilos."""
     con = sqlite3.connect(DB_PATH, timeout=10)
@@ -107,16 +106,8 @@ def insertar_deteccion(con: sqlite3.Connection, frame: int, estado: str,
     con.commit()
 
 
-# ---------------------------------------------------------------------------
-# LÓGICA DE VISIÓN
-# ---------------------------------------------------------------------------
-def build_zona_riesgo(ancho: int, alto: int) -> np.ndarray:
-    """Rectángulo central adaptativo a la resolución del video."""
-    x1, x2 = int(ancho * MARGEN_X), int(ancho * (1 - MARGEN_X))
-    y1, y2 = int(alto * MARGEN_Y), int(alto * (1 - MARGEN_Y))
-    zona = np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]], dtype=np.int32)
-    return zona.reshape((-1, 1, 2))
 
+# LÓGICA DE VISIÓN
 
 def contar_en_zona(cajas, zona: np.ndarray, nombres: dict) -> dict:
     """Cuenta person/helmet/vest SOLO si el centroide de la caja cae dentro de la zona."""
@@ -149,9 +140,8 @@ def evaluar_estado(personas: int, cascos: int, chalecos: int) -> str:
     return "CUMPLE"
 
 
-# ---------------------------------------------------------------------------
 # STREAMING: dibujo y publicación de frames
-# ---------------------------------------------------------------------------
+
 def dibujar_detecciones(frame, resultado) -> None:
     """Dibuja cajas, etiquetas e IDs de tracking directamente sobre `frame`."""
     if resultado.boxes is None:
@@ -231,9 +221,9 @@ def abrir_captura(fuente) -> cv2.VideoCapture:
     return cv2.VideoCapture(fuente)
 
 
-# ---------------------------------------------------------------------------
+
 # MOTOR (hilo en segundo plano)
-# ---------------------------------------------------------------------------
+
 class Motor:
     def __init__(self) -> None:
         self.lock = threading.Lock()
@@ -302,10 +292,41 @@ def bucle_video(fuente, stop_event: threading.Event) -> None:
                 break  # fin del video / cámara desconectada
             frame_idx += 1
 
-            # Geofencing estático adaptativo: se calcula una sola vez con el primer frame
+            # Geofencing dinámico según la fuente
             if zona is None:
                 alto, ancho = frame.shape[:2]
-                zona = build_zona_riesgo(ancho, alto)
+                if not es_archivo:
+                    # 1. CÁMARA EN VIVO: Usa toda la pantalla (100%)
+                    zona = np.array([
+                        [0, 0], [ancho, 0], [ancho, alto], [0, alto]
+                    ], dtype=np.int32).reshape((-1, 1, 2))
+                else:
+                    # 2. VIDEO GRABADO: Ventana emergente para calibración manual
+                    puntos_zona = []
+                    def click_calibracion(event, x, y, flags, param):
+                        if event == cv2.EVENT_LBUTTONDOWN:
+                            puntos_zona.append((x, y))
+
+                    cv2.namedWindow("Calibracion Manual", cv2.WINDOW_NORMAL)
+                    cv2.setMouseCallback("Calibracion Manual", click_calibracion)
+                    
+                    while not stop_event.is_set():
+                        frame_calib = frame.copy()
+                        for p in puntos_zona:
+                            cv2.circle(frame_calib, p, 8, (0, 255, 0), -1)
+                        if len(puntos_zona) > 1:
+                            cv2.polylines(frame_calib, [np.array(puntos_zona, dtype=np.int32)], False, (0, 0, 255), 3)
+                        
+                        cv2.putText(frame_calib, "Clic izq: marcar | ENTER: confirmar (min 3 pts)", 
+                                    (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        
+                        cv2.imshow("Calibracion Manual", frame_calib)
+                        tecla = cv2.waitKey(20) & 0xFF
+                        if tecla == 13 and len(puntos_zona) >= 3:  # Tecla Enter
+                            break
+                    
+                    cv2.destroyWindow("Calibracion Manual")
+                    zona = np.array(puntos_zona, dtype=np.int32).reshape((-1, 1, 2))
 
             resultados = modelo.track(frame, persist=True, tracker='botsort.yaml',
                                       verbose=False, conf=CONFIANZA)
@@ -336,9 +357,10 @@ def bucle_video(fuente, stop_event: threading.Event) -> None:
 
             motor.actualizar(frames_procesados=frame_idx)
 
-            # --- Streaming: dibujar sobre el frame y publicarlo (no toca la lógica de BD) ---
+            # Streaming: dibujar sobre el frame y publicarlo (no toca la lógica de BD) 
             dibujar_detecciones(frame, resultados[0])
-            cv2.polylines(frame, [zona], True, (0, 255, 255), 2)  # zona de geofencing
+            if es_archivo:
+                cv2.polylines(frame, [zona], True, (0, 255, 255), 2)  # Solo dibuja la caja en videos grabados
             dibujar_banner_estado(frame, estado, personas, cascos, chalecos)
             if frame.shape[1] > MAX_ANCHO:
                 nuevo_alto = int(frame.shape[0] * MAX_ANCHO / frame.shape[1])
@@ -405,9 +427,8 @@ def arrancar_motor(fuente_txt: str, reemplazar: bool = False) -> None:
         motor.hilo.start()
 
 
-# ---------------------------------------------------------------------------
 # API (FastAPI)
-# ---------------------------------------------------------------------------
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()  # crea seguridad.db y la tabla si no existen
@@ -508,7 +529,6 @@ def listar_camaras(max_indice: int = Query(5, ge=1, le=10)):
     return {"camaras": encontradas}
 
 
-# ---------------------------------------------------------------------------
+
 # FRONTEND ESTÁTICO: dejar SIEMPRE al final del archivo (después de todas las rutas)
-# ---------------------------------------------------------------------------
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

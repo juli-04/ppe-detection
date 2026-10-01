@@ -8,11 +8,11 @@ from datetime import datetime
 from winotify import Notification
 from ultralytics import YOLO
 
-# ==================== CONFIGURACIÓN DE PÁGINA ====================
+# CONFIGURACIÓN DE PÁGINA 
 st.set_page_config(page_title="SkyGuard | Sistema de Seguridad Industrial",
                     layout="wide", initial_sidebar_state="expanded")
 
-# ==================== ESTILO VISUAL PROFESIONAL ====================
+# ESTILO VISUAL PROFESIONAL 
 st.markdown("""
 <style>
     .main { background-color: #0E1117; }
@@ -41,19 +41,19 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==================== USUARIOS (demo) ====================
+# USUARIOS (demo) 
 USUARIOS = {
     "inspector": {"password": "1234", "rol": "Inspector", "nombre": "Julieta Leo"},
     "gerente":   {"password": "1234", "rol": "Gerente de Obra", "nombre": "Gerente General"},
 }
 
-# ==================== ESTADO DE SESIÓN ====================
+#  ESTADO DE SESIÓN 
 if "logueado" not in st.session_state:
     st.session_state.logueado = False
 if "corriendo" not in st.session_state:
     st.session_state.corriendo = False
 
-# ==================== PANTALLA DE LOGIN ====================
+#  PANTALLA DE LOGIN 
 def pantalla_login():
     st.markdown('<div class="titulo-app">SkyGuard</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitulo">Sistema de Monitoreo de Seguridad Industrial</div>', unsafe_allow_html=True)
@@ -73,7 +73,7 @@ def pantalla_login():
             else:
                 st.error("Usuario o contraseña incorrectos.")
 
-# ==================== FUNCIONES AUXILIARES ====================
+# FUNCIONES AUXILIARES 
 def notificar_incumplimiento(mensaje):
     winsound.Beep(1000, 300)
     toast = Notification(app_id="SkyGuard", title="Incumplimiento de seguridad detectado",
@@ -92,11 +92,11 @@ def obtener_estado(conteo):
     tiene_helmet = conteo["helmet"] > 0
     tiene_vest = conteo["vest"] > 0
     if tiene_helmet and tiene_vest:
-        return "CUMPLE - CASCO Y CHALECO", "#16A34A"       # verde
+        return "CUMPLE - CASCO Y CHALECO", "#16A34A"
     elif tiene_helmet or tiene_vest:
-        return "CUMPLIMIENTO PARCIAL", "#CA8A04"           # amarillo
+        return "CUMPLIMIENTO PARCIAL", "#CA8A04"
     else:
-        return "INCUMPLIMIENTO TOTAL", "#DC2626"           # rojo
+        return "INCUMPLIMIENTO TOTAL", "#DC2626"
 
 def build_zona_riesgo(ancho, alto):
     """
@@ -116,7 +116,7 @@ def build_zona_riesgo(ancho, alto):
 def cargar_modelo():
     return YOLO('modelos/best.pt')
 
-# ==================== VISTA: INSPECTOR ====================
+# VISTA: INSPECTOR (detección en tiempo real)
 def vista_inspector():
     modelo = cargar_modelo()
     CLASES = modelo.names
@@ -189,12 +189,12 @@ def vista_inspector():
 
                 numero_frame += 1
 
-                # --- Geofencing: cálculo único de ZONA_RIESGO desde frame.shape ---
+                # Geofencing: cálculo único de ZONA_RIESGO desde frame.shape 
                 if ZONA_RIESGO is None:
                     alto_frame, ancho_frame = frame.shape[:2]
                     ZONA_RIESGO = build_zona_riesgo(ancho_frame, alto_frame)
 
-                # --- Tracking con BoT-SORT ---
+                # Tracking con BoT-SORT 
                 resultados = modelo.track(frame, persist=True, tracker='botsort.yaml',
                                           verbose=False, conf=0.45)
                 frame_anotado = resultados[0].plot()
@@ -203,7 +203,7 @@ def vista_inspector():
                 cv2.polylines(frame_anotado, [ZONA_RIESGO], isClosed=True,
                               color=(0, 0, 255), thickness=3)
 
-                # --- Extracción de cajas, clases e IDs ---
+                # Extracción de cajas, clases e IDs 
                 conteo = {"head": 0, "helmet": 0, "person": 0, "vest": 0}
                 cajas = resultados[0].boxes
 
@@ -268,7 +268,7 @@ def vista_inspector():
     else:
         st.info("Seleccioná una fuente de video y presioná Iniciar detección.")
 
-# ==================== VISTA: GERENTE DE OBRA (solo lectura) ====================
+# VISTA: GERENTE DE OBRA (solo lectura) 
 def vista_gerente():
     st.markdown('<div class="titulo-app" style="font-size:22px;">Panel de Reportes</div>', unsafe_allow_html=True)
 
@@ -295,7 +295,7 @@ def vista_gerente():
         st.markdown("### Eventos por usuario")
         st.bar_chart(df["usuario"].value_counts())
 
-# ==================== APP PRINCIPAL ====================
+# APP PRINCIPAL 
 if not st.session_state.logueado:
     pantalla_login()
 else:
